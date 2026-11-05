@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<main class="container"><section class="card auth"><h2>你好，{{ user.username }}</h2><p>你已登录，可阅读会员内容、评论并下载允许下载的资源。</p>{% if user.is_superuser %}<a class="button" href="/admin/">管理后台</a>{% endif %}<p><a href="/diary/">阅读每日日记 →</a></p></section></main>{% endblock %}
