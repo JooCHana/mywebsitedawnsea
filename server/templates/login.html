@@ -1,1 +1,0 @@
-{% extends 'base.html' %}{% block content %}<main class='container'><section class='card auth'><h2>欢迎回到海边</h2><form method='post'>{% csrf_token %}{{ form.as_p }}<input type="hidden" name="next" value="{{ next }}"><p><button class='button'>登录</button></p></form><a href='/login/'>已有账号？登录</a> · <a href='/register/'>注册新账号</a></section></main>{% endblock %}

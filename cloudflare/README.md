@@ -78,3 +78,16 @@ https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
 
 ## 域名绑定更新（2026-11-06）
 Cloudflare 已确认 dawnsea.space 为 active，并已绑定 dawnsea Worker 的生产环境。Cloudflare DNS 已返回 A 记录；当前本机 DNS 尚未同步，HTTPS 握手未通过，正式域名访问仍需后续验证。备用地址 https://dawnsea.1050162298.workers.dev 已保留。
+
+## 2026-11-06 动态主页更新
+- 参考 SRInternet/Home_Page 的个人侧栏与卡片布局，以原创 SVG/CSS 海景实现昼夜主题；未复制该仓库源码。
+- 本地时间 06–18 点为日间，其余为夜间；可手动切换。支持减少动态效果的系统偏好。
+- 页面模块：src/layout.js；新增业务：src/community.js；海景样式：public/home.css；交互：public/home.js、theme.js。
+- 头像目前为原创海景占位 SVG。用户提供海边图像后，将图片保存到 public 并修改 layout.js 与 community.js 中头像引用。
+- 注册需用户名、手机号、邮箱及密码，不发送短信/邮件；保留简单算术验证码。手机号邮箱不向访客展示。
+- 讨论全部公开，登录才能发帖回复；后台可编辑删除话题及评论。旧文章的三级权限仍然保留。
+- 推文由原文章数据展示，在编辑页面勾选置顶；工作项目支持介绍、外部链接、公开 PDF/TXT 文档。
+- 未开通 R2；小文档保存在 D1，每份最大 512KB；图片视频上传仍保持禁用。项目文档公开下载。
+- 数据库变更见 migrations/0002_community.sql。已备份旧数据库于被 Git 忽略的 private/，切勿上传该目录。
+
+背景与头像已替换为用户提供的原图：public/sea-night.png、sea-day.png、avatar.png。昼夜交叉淡入，夜间保留局部光影与海面动画；不修改原图。

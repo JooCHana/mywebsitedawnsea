@@ -1,0 +1,13 @@
+旧版本归档/
+发布包/
+**/node_modules/
+**/.wrangler/
+**/dist/
+**/private/
+**/.env*
+**/.dev.vars*
+**/__pycache__/
+**/.venv/
+*.log
+*.sqlite3
+*.db

@@ -9,7 +9,7 @@ test('Workers integration: accounts, permissions, comments, upload, range, moder
  const mf=new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:'dist/worker.js',compatibilityDate:'2026-11-03',d1Databases:['DB'],r2Buckets:['MEDIA'],bindings:{ADMIN_USERNAME:'dawnsea',ADMIN_PASSWORD_HASH:await hashPassword(password)}}));
  try {
  const db=await mf.getD1Database('DB');
- for(const sql of readFileSync('migrations/0001_initial.sql','utf8').split(';').map(x=>x.trim()).filter(Boolean))await db.prepare(sql).run();
+ for(const sql of (readFileSync('migrations/0001_initial.sql','utf8')+';'+readFileSync('migrations/0002_community.sql','utf8')).split(';').map(x=>x.trim()).filter(Boolean))await db.prepare(sql).run();
  let ip=1;
  async function req(path,{method='GET',data,cookie='',origin='http://site.test',fixedIp}={}) {
   const headers={'CF-Connecting-IP':fixedIp||'192.0.2.'+(ip++),'Cookie':cookie};if(method==='POST')headers.Origin=origin;
@@ -17,7 +17,7 @@ test('Workers integration: accounts, permissions, comments, upload, range, moder
   if(data instanceof FormData){const encoded=new Request('http://site.test',{method:'POST',body:data});headers['Content-Type']=encoded.headers.get('Content-Type');body=await encoded.arrayBuffer();}else if(data)headers['Content-Type']='application/x-www-form-urlencoded';
   return mf.dispatchFetch('http://site.test'+path,{method,headers,body,redirect:'manual'});
  }
- async function auth(path,username,pw){const page=await req(path),html=await page.text(),id=html.match(/name="challenge" value="([a-f0-9]+)"/)[1],sum=html.match(/验证码：(\d+) \+ (\d+)/);return req(path,{method:'POST',data:{username,password:pw,confirm:pw,challenge:id,answer:String(Number(sum[1])+Number(sum[2]))}});}
+ async function auth(path,username,pw){const page=await req(path),html=await page.text(),id=html.match(/name="challenge" value="([a-f0-9]+)"/)[1],sum=html.match(/验证码：(\d+) \+ (\d+)/);return req(path,{method:'POST',data:{username,password:pw,confirm:pw,phone:"13800138001",email:"reader@example.com",challenge:id,answer:String(Number(sum[1])+Number(sum[2]))}});}
  for(const path of ['/','/observations','/diary','/essays','/videos','/login','/register'])assert.equal((await req(path)).status,200,path);
  assert.equal((await req('/admin')).status,303);
  assert.equal((await req('/register',{method:'POST',origin:'https://evil.test',data:{}})).status,403);
@@ -47,6 +47,24 @@ test('Workers integration: accounts, permissions, comments, upload, range, moder
  const range=await mf.dispatchFetch('http://site.test/media/'+attachment.id,{headers:{Range:'bytes=0-7'}});assert.equal(range.status,206);assert.equal((await range.arrayBuffer()).byteLength,8);
  await db.prepare("UPDATE posts SET visibility='private' WHERE id=?").bind(postIds.public).run();assert.equal((await req('/media/'+attachment.id,{cookie:member})).status,404);
  assert.equal((await req('/media/'+attachment.id,{cookie:admin})).status,200);
+
+ assert.equal((await req('/discussions')).status,200);
+ assert.ok((await(await req('/discussions')).text()).includes('data-auth'));
+ assert.equal((await req('/discussion/new',{method:'POST',data:{title:'blocked',body:'blocked'}})).status,303);
+ const t=await req('/discussion/new',{method:'POST',cookie:member,data:{title:'公开问题',body:'讨论内容'}});assert.equal(t.status,303);
+ const topicPath=t.headers.get('location');assert.equal((await req(topicPath)).status,200);
+ assert.equal((await req(topicPath,{method:'POST',cookie:member,data:{body:'公开回复'}})).status,303);
+ assert.ok((await(await req(topicPath)).text()).includes('公开回复'));
+ assert.equal((await req('/admin/community',{cookie:member})).status,403);
+ assert.equal((await req('/admin/projects',{method:'POST',cookie:admin,data:{title:'项目',body:'介绍',url:'javascript:alert(1)'}})).status,400);
+ assert.equal((await req('/admin/projects',{method:'POST',cookie:admin,data:{title:'项目',body:'介绍',url:'https://github.com/JooCHana'}})).status,303);
+ const document=new FormData();document.set('project_id','1');document.set('file',new File(['测试文档'],'readme.txt',{type:'text/plain'}));
+ assert.equal((await req('/admin/document',{method:'POST',cookie:admin,data:document})).status,303);
+ const downloaded=await req('/document/1');assert.equal(downloaded.status,200);assert.equal(await downloaded.text(),'测试文档');
+ assert.ok((await(await req('/work')).text()).includes('readme.txt'));
+ await req('/admin/post',{method:'POST',cookie:admin,data:{id:postIds.members,title:'会员置顶',body:'private pinned',kind:'diary',visibility:'members',pinned:'on'}});
+ assert.ok(!(await(await req('/')).text()).includes('会员置顶'));
+ assert.ok((await(await req('/',{cookie:member})).text()).includes('会员置顶'));
  await req('/admin/users',{method:'POST',cookie:admin,data:{id:'1'}});assert.equal((await req('/account',{cookie:member})).status,303);
  console.log('Integration verified: all sections, registration/login, CSRF, 3 visibility levels, escaped content, comments, R2, Range, downloads and ban revocation.');
  }finally{await mf.dispose();}

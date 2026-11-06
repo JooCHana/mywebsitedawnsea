@@ -1,3 +1,5 @@
+import {shell as page} from './layout.js';
+import {community} from './community.js';
 import {escape as e,random,digest,hashPassword,verifyPassword,canRead,uploadType} from './security.js';
 const kinds={article:'所见所闻',diary:'每日日记',essay:'观点随笔',video:'视频'};
 const paths={'/observations':'article','/diary':'diary','/essays':'essay','/videos':'video'};
@@ -6,9 +8,6 @@ const redirect=(url,cookie)=>new Response(null,{status:303,headers:{Location:url
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const field=(name,label,value='',type='text')=>`<label>${label}<input name="${name}" type="${type}" value="${e(value)}" ${type==='password'?'autocomplete="current-password"':''}></label>`;
 const select=(name,values,current)=>`<select name="${name}">${Object.entries(values).map(([v,label])=>`<option value="${v}" ${v===current?'selected':''}>${e(label)}</option>`).join('')}</select>`;
-function page(title,body,user,settings={}) {
- return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(title)} · dawnsea</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/app.css"></head><body class="${settings.style==='sea'?'sea':''}"><header class="site-header"><nav class="navigation container" aria-label="主导航"><a class="brand" href="/">dawnsea<span>.</span></a><div class="nav-links"><a href="/">首页</a><a href="/observations">所见所闻</a><a href="/diary">每日日记</a><a href="/essays">观点随笔</a><a href="/videos">视频</a>${user?`<a href="/account">${e(user.username)}</a>${user.role==='admin'?'<a href="/admin">管理后台</a>':''}<form action="/logout" method="post"><button class="text-button">退出</button></form>`:'<a href="/register">注册</a><a href="/login">登录</a>'}</div></nav></header><main class="container">${body}</main><footer class="site-footer">© ${new Date().getFullYear()} HJC · ${e(settings.icp||'')}<p>凌晨的海 · 留下生活经过的痕迹</p></footer></body></html>`,{headers:{'Content-Type':'text/html; charset=utf-8'}});
-}
 async function userFor(req,env) {
  const token=(req.headers.get('Cookie')||'').match(/(?:^|;\s*)session=([a-f0-9]{64})(?:;|$)/)?.[1];
  if(!token)return null;
@@ -32,7 +31,7 @@ async function checkChallenge(env,form) {
 const requireUser=user=>{if(!user)fail(401,'请先登录。');};
 const requireAdmin=user=>{if(user?.role!=='admin')fail(403,'仅管理员可访问。');};
 const string=(f,name,max=200)=>{const value=String(f.get(name)||'').trim();if(value.length>max)fail(400,`${name} 内容过长。`);return value;};
-const postEditor=(post={})=>`<form method="post" action="/admin/post"><input type="hidden" name="id" value="${post.id||''}">${field('title','标题',post.title)}<label>正文（纯文本，自动保留换行）<textarea name="body" rows="14" required>${e(post.body)}</textarea></label><div class="grid"><label>板块${select('kind',kinds,post.kind||'article')}</label><label>访问权限${select('visibility',{public:'公开',members:'仅注册会员',private:'仅自己'},post.visibility||'public')}</label></div>${field('category','分类',post.category)}${field('tags','标签（英文逗号分隔）',post.tags)}<button class="button">保存内容</button></form>`;
+const postEditor=(post={})=>`<form method="post" action="/admin/post"><input type="hidden" name="id" value="${post.id||''}">${field('title','标题',post.title)}<label>正文（纯文本，自动保留换行）<textarea name="body" rows="14" required>${e(post.body)}</textarea></label><div class="grid"><label>板块${select('kind',kinds,post.kind||'article')}</label><label>访问权限${select('visibility',{public:'公开',members:'仅注册会员',private:'仅自己'},post.visibility||'public')}</label></div>${field('category','分类',post.category)}${field('tags','标签（英文逗号分隔）',post.tags)}<label class="check"><input type="checkbox" name="pinned" ${post.pinned?'checked':''}>置顶推文</label><button class="button">保存内容</button></form>`;
 async function route(req,env,ctx) {
  const url=new URL(req.url),path=url.pathname.replace(/\/$/,'')||'/',method=req.method;
  if(!['GET','HEAD','POST'].includes(method))fail(405,'不支持的请求方法。');
@@ -46,10 +45,11 @@ async function route(req,env,ctx) {
  if(method==='POST')await rate(env,`post:${ip}`,120,60);
  // Cleanup is bounded by the rolling quotas and runs outside the response path.
  ctx.waitUntil(env.DB.batch(['sessions','challenges','limits'].map(t=>env.DB.prepare(`DELETE FROM ${t} WHERE expires<?`).bind(epoch()))).catch(()=>{}));
+ const extra=await community({req,env,user,path,url,render,fail,rate,string,requireAdmin,requireUser,redirect});if(extra)return extra;
  if((path==='/login'||path==='/register')&&method==='GET') {
   await rate(env,`auth-form:${ip}`,60,600);
   if(user)return redirect('/account');
-  return render(path==='/login'?'会员登录':'会员注册',`<section class="card auth"><p class="eyebrow">DAWNSEA / ACCOUNT</p><h1>${path==='/login'?'欢迎回到海边':'在海边留一个名字'}</h1><form method="post">${field('username','用户名（3–32 位字母、数字、下划线）')}${field('password','密码（至少 10 位，最多 128 位）','','password')}${path==='/register'?field('confirm','再次输入密码','','password'):''}${await challenge(env)}<button class="button">${path==='/login'?'登录':'创建账号'}</button></form><p><a href="/login">已有账号？登录</a> · <a href="/register">注册会员</a></p></section>`);
+  return render(path==='/login'?'会员登录':'会员注册',`<section class="card auth"><p class="eyebrow">DAWNSEA / ACCOUNT</p><h1>${path==='/login'?'欢迎回到海边':'在海边留一个名字'}</h1><form method="post">${field('username','用户名（3–32 位字母、数字、下划线）')}${field('password','密码（至少 10 位，最多 128 位）','','password')}${path==='/register'?field('phone','手机号','','tel')+field('email','邮箱','','email')+field('confirm','再次输入密码','','password')+'<p>无需短信或邮箱验证，联系方式不会公开展示。</p>':''}${await challenge(env)}<button class="button">${path==='/login'?'登录':'创建账号'}</button></form><p><a href="/login">已有账号？登录</a> · <a href="/register">注册会员</a></p></section>`);
  }
  if((path==='/login'||path==='/register')&&method==='POST') {
   await rate(env,`auth:${ip}`,12,600);
@@ -61,10 +61,11 @@ async function route(req,env,ctx) {
   const adminName=env.ADMIN_USERNAME||'dawnsea';
   if(path==='/register') {
    if(username.toLowerCase()===adminName.toLowerCase())fail(400,'该用户名已保留。');
+   const phone=string(f,'phone',24),email=string(f,'email',254).toLowerCase();if(!/^\+?[0-9]{7,15}$/.test(phone)||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'请填写有效的手机号和邮箱。');
    if(password!==f.get('confirm'))fail(400,'两次密码不一致。');
    const exists=await env.DB.prepare('SELECT id FROM users WHERE lower(username)=lower(?)').bind(username).first();
    if(exists)fail(400,'该用户名已存在。');
-   try { await env.DB.prepare('INSERT INTO users(username,password) VALUES(?,?)').bind(username,await hashPassword(password)).run(); }
+   try { await env.DB.prepare('INSERT INTO users(username,password,phone,email) VALUES(?,?,?,?)').bind(username,await hashPassword(password),phone,email).run(); }
    catch {fail(400,'注册未完成，该用户名可能已存在。');}
    return redirect('/login');
   }
@@ -115,7 +116,7 @@ async function route(req,env,ctx) {
   const p=await env.DB.prepare('SELECT * FROM posts WHERE id=?').bind(detail[1]).first();if(!canRead(user,p))fail(404,'内容不存在或不可见。');
   const {results:files}=await env.DB.prepare('SELECT * FROM attachments WHERE post_id=?').bind(p.id).all();
   const {results:comments}=await env.DB.prepare('SELECT c.*,u.username FROM comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? AND c.approved=1 ORDER BY c.id DESC LIMIT 100').bind(p.id).all();
-  return render(p.title,`<section class="content page-heading"><p class="subtitle">${e(p.created)} / ${kinds[p.kind]}</p><h1>${e(p.title)}</h1><article class="post-body">${e(p.body)}</article>${files.map(f=>`<figure>${f.mime.startsWith('video/')?`<video controls preload="metadata" src="/media/${f.id}"></video>`:`<img loading="lazy" src="/media/${f.id}" alt="${e(f.name)}">`}${f.downloadable&&user?`<figcaption><a href="/media/${f.id}?download=1">下载 ${e(f.name)}</a></figcaption>`:''}</figure>`).join('')}<h2>海边留言</h2>${url.searchParams.has('submitted')?'<p role="status">留言已提交，审核后展示。</p>':''}${comments.map(c=>`<div class="card entry"><b>${e(c.username)}</b><p class="post-body">${e(c.body)}</p></div>`).join('')||'<p>还没有公开留言。</p>'}${user?`<form method="post" action="/comment/${p.id}"><label>留言<textarea name="body" maxlength="2000" required></textarea></label>${await challenge(env)}<button class="button">提交审核</button></form>`:'<a href="/login">登录后参与交流</a>'}</section>`);
+  return render(p.title,`<section class="content page-heading"><p class="subtitle">${e(p.created)} / ${kinds[p.kind]}</p><h1>${e(p.title)}</h1><article class="post-body">${e(p.body)}</article>${files.map(f=>`<figure>${f.mime.startsWith('video/')?`<video controls preload="metadata" src="/media/${f.id}"></video>`:`<img loading="lazy" src="/media/${f.id}" alt="${e(f.name)}">`}${f.downloadable&&user?`<figcaption><a href="/media/${f.id}?download=1">下载 ${e(f.name)}</a></figcaption>`:''}</figure>`).join('')}<h2>海边留言</h2>${url.searchParams.has('submitted')?'<p role="status">留言已提交，审核后展示。</p>':''}${comments.map(c=>`<div class="card entry"><b>${e(c.username)}</b><p class="post-body">${e(c.body)}</p></div>`).join('')||'<p>还没有公开留言。</p>'}${user?`<form method="post" action="/comment/${p.id}"><label>留言<textarea name="body" maxlength="2000" required></textarea></label>${await challenge(env)}<button class="button">提交审核</button></form>`:'<a href="/login" data-auth>登录后参与交流</a>'}</section>`);
  }
  const comment=path.match(/^\/comment\/(\d+)$/);
  if(comment&&method==='POST') {
@@ -139,7 +140,7 @@ async function route(req,env,ctx) {
   if(!user)return redirect('/login');requireAdmin(user);
   if(path==='/admin'&&method==='GET') {
    const {results:posts}=await env.DB.prepare('SELECT id,title,kind,visibility FROM posts ORDER BY id DESC LIMIT 200').all();
-   return render('管理后台',`<section class="page-heading"><h1>管理后台</h1><p>欢迎，${e(user.username)}。在这里记录你的生活。</p><div class="actions"><a class="button" href="/admin/post">发布内容</a><a href="/admin/users">会员管理</a><a href="/admin/comments">评论审核</a><a href="/admin/settings">网站设置</a></div></section><div class="card">${posts.map(p=>`<div class="admin-row"><a href="/admin/post?id=${p.id}">${e(p.title)}</a><span>${kinds[p.kind]} · ${e(p.visibility)}</span><a href="/post/${p.id}">查看</a></div>`).join('')||'暂无内容，点击“发布内容”开始。'}</div>`);
+   return render('管理后台',`<section class="page-heading"><h1>管理后台</h1><p>欢迎，${e(user.username)}。在这里记录你的生活。</p><div class="actions"><a class="button" href="/admin/post">发布内容</a><a href="/admin/projects">项目管理</a><a href="/admin/community">话题评论管理</a><a href="/admin/users">会员管理</a><a href="/admin/comments">评论审核</a><a href="/admin/settings">网站设置</a></div></section><div class="card">${posts.map(p=>`<div class="admin-row"><a href="/admin/post?id=${p.id}">${e(p.title)}</a><span>${kinds[p.kind]} · ${({public:'公开',members:'会员可见',private:'仅自己'})[p.visibility]}</span><a href="/post/${p.id}">查看</a></div>`).join('')||'暂无内容，点击“发布内容”开始。'}</div>`);
   }
   if(path==='/admin/post'&&method==='GET') {
    const id=url.searchParams.get('id'),p=id?await env.DB.prepare('SELECT * FROM posts WHERE id=?').bind(id).first():{};if(!p)fail(404,'文章不存在。');
@@ -152,7 +153,7 @@ async function route(req,env,ctx) {
    const id=string(f,'id');let saved;
    if(id){saved=await env.DB.prepare('UPDATE posts SET title=?,body=?,kind=?,visibility=?,category=?,tags=? WHERE id=? RETURNING id').bind(title,body,kind,visibility,category,tags,id).first();if(!saved)fail(404,'文章不存在。');}
    else saved=await env.DB.prepare('INSERT INTO posts(title,body,kind,visibility,category,tags) VALUES(?,?,?,?,?,?) RETURNING id').bind(title,body,kind,visibility,category,tags).first();
-   return redirect('/admin/post?id='+saved.id);
+   await env.DB.prepare('UPDATE posts SET pinned=? WHERE id=?').bind(f.has('pinned')?1:0,saved.id).run();return redirect('/admin/post?id='+saved.id);
   }
   if(path==='/admin/upload'&&method==='POST') {
    if(!env.MEDIA)fail(503,'图片和视频上传暂未启用，管理员需要先开通并绑定 R2。');
@@ -181,14 +182,14 @@ async function route(req,env,ctx) {
   }
   if(path==='/admin/users'&&method==='GET') {
    const {results}=await env.DB.prepare('SELECT id,username,role,banned,created FROM users ORDER BY id DESC LIMIT 500').all();
-   return render('会员管理',`<section class="page-heading"><h1>会员管理</h1><a href="/admin">返回后台</a></section><div class="card">${results.map(u=>`<div class="admin-row"><span>${e(u.username)} · ${e(u.role)} · ${u.banned?'已封禁':'正常'}</span>${u.role!=='admin'?`<form method="post"><input type="hidden" name="id" value="${u.id}"><button>${u.banned?'解除封禁':'封禁'}</button></form>`:''}</div>`).join('')}</div>`);
+   return render('会员管理',`<section class="page-heading"><h1>会员管理</h1><a href="/admin">返回后台</a></section><div class="card">${results.map(u=>`<div class="admin-row"><span>${e(u.username)} · ${u.role==='admin'?'管理员':'会员'} · ${u.banned?'已封禁':'正常'}</span>${u.role!=='admin'?`<form method="post"><input type="hidden" name="id" value="${u.id}"><button>${u.banned?'解除封禁':'封禁'}</button></form>`:''}</div>`).join('')}</div>`);
   }
   if(path==='/admin/users'&&method==='POST') {
    const f=await req.formData(),id=string(f,'id');await env.DB.batch([env.DB.prepare("UPDATE users SET banned=1-banned WHERE id=? AND role!='admin'").bind(id),env.DB.prepare("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE id=? AND role!='admin')").bind(id)]);return redirect('/admin/users');
   }
   if(path==='/admin/comments'&&method==='GET') {
    const {results}=await env.DB.prepare('SELECT c.*,u.username,p.title FROM comments c JOIN users u ON u.id=c.user_id JOIN posts p ON p.id=c.post_id ORDER BY c.id DESC LIMIT 200').all();
-   return render('评论审核',`<section class="page-heading"><h1>评论审核</h1><a href="/admin">返回后台</a></section>${results.map(c=>`<div class="card entry"><b>${e(c.username)} / ${e(c.title)}</b><p>${e(c.body)}</p><form method="post"><input type="hidden" name="id" value="${c.id}"><button name="action" value="toggle">${c.approved?'撤回审核':'审核通过'}</button> <button name="action" value="delete">删除</button></form></div>`).join('')||'<p>暂无评论。</p>'}`);
+   return render('评论审核',`<section class="page-heading"><h1>评论审核</h1><a href="/admin">返回后台</a></section>${results.map(c=>`<div class="card entry"><b>${e(c.username)} / ${e(c.title)}</b><p>${e(c.body)}</p><a href="/admin/comment-edit?id=${c.id}">编辑评论</a><form method="post"><input type="hidden" name="id" value="${c.id}"><button name="action" value="toggle">${c.approved?'撤回审核':'审核通过'}</button> <button name="action" value="delete">删除</button></form></div>`).join('')||'<p>暂无评论。</p>'}`);
   }
   if(path==='/admin/comments'&&method==='POST') {
    const f=await req.formData(),id=string(f,'id');await env.DB.prepare(f.get('action')==='delete'?'DELETE FROM comments WHERE id=?':'UPDATE comments SET approved=1-approved WHERE id=?').bind(id).run();return redirect('/admin/comments');
@@ -205,6 +206,6 @@ export default {async fetch(req,env,ctx) {
  try {response=await route(req,env,ctx);}catch(error){if(!error.status)console.error('Request failed:',error.message);response=page('提示',`<section class="card auth"><h1>${error.status||500}</h1><p>${e(error.status?error.message:'服务暂时不可用，请稍后重试。管理员请检查数据库绑定与日志。')}</p><a href="/">返回首页</a> · <a href="/login">登录</a></section>`,null);response=new Response(response.body,{status:error.status||500,headers:response.headers});}
  const headers=new Headers(response.headers);
  headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','same-origin');headers.set('X-Frame-Options','DENY');headers.set('Cache-Control','private, no-store');
- headers.set('Content-Security-Policy',"default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+ headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
  return new Response(req.method==='HEAD'?null:response.body,{status:response.status,headers});
 }};

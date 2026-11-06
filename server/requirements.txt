@@ -1,4 +1,0 @@
-Django>=5.2,<5.3
-Pillow>=11
-whitenoise>=6.8
-gunicorn>=23; platform_system != "Windows"
