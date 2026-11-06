@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dawnsea",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-05",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dawnsea-db",
+      "migrations_dir": "migrations",
+      "database_id": "953d454b-62fb-4631-bca3-f6d78240440e"
+    }
+  ],
+  "vars": {
+    "ADMIN_USERNAME": "dawnsea"
+  },
+  "routes": [
+    {
+      "pattern": "dawnsea.space",
+      "custom_domain": true
+    }
+  ],
+  "workers_dev": true
+}

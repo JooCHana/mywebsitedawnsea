@@ -1,0 +1,15 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL UNIQUE,password TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member','admin')),banned INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE sessions(token TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires INTEGER NOT NULL);
+CREATE TABLE challenges(id TEXT PRIMARY KEY,answer TEXT NOT NULL,expires INTEGER NOT NULL);
+CREATE TABLE limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
+CREATE TABLE posts(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,body TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('article','diary','essay','video')),visibility TEXT NOT NULL CHECK(visibility IN ('public','members','private')),category TEXT NOT NULL DEFAULT '',tags TEXT NOT NULL DEFAULT '',created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE attachments(id TEXT PRIMARY KEY,post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,downloadable INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT,post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,user_id INTEGER NOT NULL REFERENCES users(id),body TEXT NOT NULL,approved INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT NOT NULL DEFAULT '凌晨的海',description TEXT NOT NULL DEFAULT '嗨嗨，这里是有趣的 dawnsea 频道！一起玩耍吧～',icp TEXT NOT NULL DEFAULT '',style TEXT NOT NULL DEFAULT 'light');
+INSERT INTO settings(id) VALUES(1);
+CREATE INDEX posts_visibility ON posts(visibility,kind,created);
+CREATE INDEX comments_post ON comments(post_id,approved);
+CREATE INDEX sessions_expiry ON sessions(expires);
+
+CREATE UNIQUE INDEX users_username_casefold ON users(lower(username));
